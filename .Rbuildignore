@@ -2,6 +2,9 @@
 ^\.Rproj\.user$
 devel
 examples
+vignettes
+man
+tests
 vignettes/JSSstyle
 vignettes/paper
 vignettes/Sweave.sty
