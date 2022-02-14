@@ -3,26 +3,27 @@
 #
 #' @describeIn validate_stopping validates that the [`StoppingLowestDoseHSRBeta`]
 #'  object contains valid probability target, threshold and shape parameters.
-validate_stopping_lowest_dose_hsr_beta <- function(object) {
-  o <- Validate()
-  o$check(
-    is.probability(object@target, bounds = FALSE),
-    "target must be probability > 0 and < 1"
-  )
-  o$check(
-    is.probability(object@prob, bounds = FALSE),
-    "prob must be probability > 0 and < 1"
-  )
-  o$check(
-    is.numeric(object@a) & object@a > 0,
-    "Beta distribution shape parameter a must me a real number > 0"
-  )
-  o$check(
-    is.numeric(object@b) & object@b > 0,
-    "Beta distribution shape parameter b must me a real number > 0"
-  )
-  o$result()
-}
+validate_stopping_lowest_dose_hsr_beta <- validate_increments_hrs_beta
+# validate_stopping_lowest_dose_hsr_beta <- function(object) {
+#   o <- Validate()
+#   o$check(
+#     is.probability(object@target, bounds = FALSE),
+#     "target must be probability > 0 and < 1"
+#   )
+#   o$check(
+#     is.probability(object@prob, bounds = FALSE),
+#     "prob must be probability > 0 and < 1"
+#   )
+#   o$check(
+#     is.numeric(object@a) & object@a > 0,
+#     "Beta distribution shape parameter a must me a real number > 0"
+#   )
+#   o$check(
+#     is.numeric(object@b) & object@b > 0,
+#     "Beta distribution shape parameter b must me a real number > 0"
+#   )
+#   o$result()
+# }
 
 
 # StoppingLowestDoseHSRBeta-class ----
@@ -118,22 +119,17 @@ setMethod(
   ),
   definition = function(stopping, dose, samples, model, data, ...) {
     # determine if the first doses is toxic
-    # First dose Tested?
+    # First active dose Tested?
     if (sum(data@x == data@doseGrid[data@placebo+1]) > 0) {
       lowest_dose_tested <- TRUE
       # summary data at first dose
       y <- factor(data@y, levels = c("0", "1"))
-      dlt_tab <- table(y, data@x)[, 1]
-      # Any DLT at first dose?
-      if (dlt_tab[2] > 0) {
-        tox_prob_first_dose <-
+      dlt_tab <- table(y, data@x)[, data@placebo+1]
+      tox_prob_first_dose <-
           1 - pbeta(
             stopping@target, dlt_tab[2] + stopping@a,
             sum(dlt_tab) - dlt_tab[2] + stopping@b
           )
-      } else {
-        tox_prob_first_dose <- 0
-      }
     } else {
       lowest_dose_tested <- FALSE
       tox_prob_first_dose <- 0
@@ -144,10 +140,10 @@ setMethod(
 
     # generate message
     msg <- if (lowest_dose_tested == FALSE) {
-      paste("Lowest dose not tested, stopping rule not applied.")
+      paste("Lowest active dose not tested, stopping rule not applied.")
     } else {
       paste(
-        "Probability that the lowest dose of ",
+        "Probability that the lowest active dose of ",
         data@doseGrid[data@placebo+1],
         " being toxic based on posterior Beta distribution using a Beta(",
         stopping@a, ",", stopping@b, ") prior is ",
