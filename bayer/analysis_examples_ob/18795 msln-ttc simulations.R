@@ -2,23 +2,23 @@ library(crmPack)
 
 emptydata <- Data(doseGrid = c(1.5, 2.5, 3.5, 4.5, 6, 7))
 
-MSLN_TTC_Model <- LogisticKadaneBayer(theta = 0.3, 
-                                      dmin = 1.5, 
-                                      dmax = 7, 
-                                      alpha = 1, 
-                                      beta = 19, 
-                                      shape = 0.5625, 
+MSLN_TTC_Model <- LogisticKadaneBayer(theta = 0.3,
+                                      dmin = 1.5,
+                                      dmax = 7,
+                                      alpha = 1,
+                                      beta = 19,
+                                      shape = 0.5625,
                                       rate = 0.125)
 
 options <- McmcOptions(burnin = 10000, step = 2, samples = 10000)
 set.seed(94)
 
-# Prior exploration 
+# Prior exploration
 PriorSamples <- mcmc(emptydata, MSLN_TTC_Model, options)
 
 plot(PriorSamples, MSLN_TTC_Model, emptydata) + ggtitle("Prior")
 
-#Sample data to test Stopping Rule 1 : MTD precisely estimated: CV(MTD) <= 30% 
+#Sample data to test Stopping Rule 1 : MTD precisely estimated: CV(MTD) <= 30%
 data1 <- Data(x=c(1.5, 1.5, 1.5, 2.5, 2.5, 2.5, 3.5, 3.5, 3.5, 4.5, 4.5, 4.5, 6, 6, 6, 4.5, 4.5, 4.5, 4.5, 4.5, 4.5),
               y=c(  0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0, 0, 1, 1,   0,   0,   0,   1,   0,   0),
               cohort=c(  1,   1,   1,   2,   2,   2,   3,   3,   3,   4,   4,   4, 5, 5, 5,   6,   6,   6,   7,   7,   7),
@@ -37,9 +37,9 @@ plot(Samples.18795.data1, MSLN_TTC_Model, data1)
 # 1, means that no dose skipping is allowed - the next dose can be maximum one level higher than the current dose.
 
 ## Rule2:
-# If at least 2 DLTs out of 3 (91% probability that the dose is toxic), 
-# or at least 3 DLTs out of 6 (84%), 
-# or at least 4 DLTs out of 9 (81%) at any dose level, 
+# If at least 2 DLTs out of 3 (91% probability that the dose is toxic),
+# or at least 3 DLTs out of 6 (84%),
+# or at least 4 DLTs out of 9 (81%) at any dose level,
 # d must be lower than that dose.
 # p.s. still needs to be implemented here or in NextBest class, see nextbest dose notes below relevant section.
 # this is straight forward and can be calculated for any number of patients in a cohort with a user defined probability threshold of 90%
@@ -48,7 +48,7 @@ plot(Samples.18795.data1, MSLN_TTC_Model, data1)
 
 #A new rule for increments must be used as crmPack only allows increase from last given dose,
 #but we want to allow the increase from the maximum applied dose
-Increments1 <- IncrementsNumDoseLevelsMax(maxLevels = 1)
+Increments1 <- IncrementsNumDoseLevels(maxLevels = 1, basisLevel="max")
 Increments2 <- IncrementsSafetyStopFix(toxrule = matrix(c(3,2,6,3,9,4),nrow=2))
 
 Increments.18795 <- IncrementMin(IncrementsList=list(Increments1,Increments2))
@@ -70,11 +70,12 @@ myStoppinglow   <- StoppingMTDdistributionBay(target = 0.3, prob = 0.8, doseeval
                                               direction='below', dosetested = T, label="tox first model")
 myStoppinghigh  <- StoppingMTDdistributionBay(target = 0.3, prob = 0.8, doseeval=emptydata@doseGrid[emptydata@nGrid],
                                               direction='above', dosetested = T, label="safe last model")
-myStoppingCV    <- StoppingCV(target=0.3, CVthreshold=30, label="precision CV")
+myStoppingCV    <- StoppingMTDCV(target=0.3, thresh_cv=30)
 myStoppingnpat  <- StoppingPatientsNearDose2(nPatients = 9, percentage = 0, label="already n=9")
 
 
-Stopping.18795 <- myStoppingfirst| myStoppinglow | myStoppinghigh | myStoppingCV | myStoppingnpat
+#Stopping.18795 <- myStoppingfirst| myStoppinglow | myStoppinghigh | myStoppingCV | myStoppingnpat
+Stopping.18795 <- myStoppingfirst| myStoppinglow | myStoppinghigh | myStoppingnpat
 
 #test stopping rules with data
 stopTrial(Stopping.18795, NextDose.18795.data1, Samples.18795.data1, MSLN_TTC_Model, data1)
@@ -121,16 +122,17 @@ pltdat <- data.frame(dose=emptydata@doseGrid,
                      peak=peak(emptydata@doseGrid))
 
 #ggplot(pltdat, aes(dose,toxic)) + geom_point() + geom_line()
-ggplot(pltdat, aes(x=dose)) + 
-  geom_line(aes(y = safe),  color = "red") + 
+ggplot(pltdat, aes(x=dose)) +
+  geom_line(aes(y = safe),  color = "red") +
   geom_line(aes(y = late),  color = "steelblue") +
   geom_line(aes(y = early), color = "yellow") +
   geom_line(aes(y = toxic), color = "black") +
-  geom_line(aes(y = peak),  color = "green") 
+  geom_line(aes(y = peak),  color = "green")
 
-nsim=1000
+nsim=2
 #use.seed=819
 use.seed=9
+para=F
 
 time <- system.time({safe.18795 <- simulate(MSLN_TTC_Design,
                                             args=NULL,
@@ -138,45 +140,45 @@ time <- system.time({safe.18795 <- simulate(MSLN_TTC_Design,
                                             nsim=nsim,
                                             seed=use.seed,
                                             mcmcOptions=options,
-                                            parallel=T)
-                    
+                                            parallel=para)
+
                     late.18795 <- simulate(MSLN_TTC_Design,
                                              args=NULL,
                                              truth=late,
                                              nsim=nsim,
                                              seed=use.seed,
                                              mcmcOptions=options,
-                                             parallel=T)
-                    
+                                             parallel=para)
+
                     early.18795 <- simulate(MSLN_TTC_Design,
                                           args=NULL,
                                           truth=early,
                                           nsim=nsim,
                                           seed=use.seed,
                                           mcmcOptions=options,
-                                          parallel=T)
-                    
+                                          parallel=para)
+
                     toxic.18795 <- simulate(MSLN_TTC_Design,
                                            args=NULL,
                                            truth=toxic,
                                            nsim=nsim,
                                            seed=use.seed,
                                            mcmcOptions=options,
-                                           parallel=T)       
-                    
+                                           parallel=para)
+
                     peak.18795 <- simulate(MSLN_TTC_Design,
                                            args=NULL,
                                            truth=peak,
                                            nsim=nsim,
                                            seed=use.seed,
                                            mcmcOptions=options,
-                                           parallel=T)
+                                           parallel=para)
                     })
-                    
- 
+
+
 
 time[3]/60
 
-save.image("~/results/18795_msln_results_m3.RData")
+#save.image("~/results/18795_msln_results_m3.RData")
 
 summary(toxic.18795, toxic)
