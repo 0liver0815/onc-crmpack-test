@@ -1,3 +1,4 @@
+source('bayer/testthat/helper-data.R')
 # stopTrial-StoppingLowestDoseHSRBeta ----
 
 # Sample data to test Stopping Rule lowest active dose is toxic.
@@ -40,20 +41,6 @@ test_that("StoppingLowestDoseHSRBeta works correctly if first active dose is not
   expect_identical(result, expected) # Prob being toxic is 24% > 10%.
 })
 
-
-h_get_data_no_plcb <- function() {
-  x <- c(25, 25, 25, 50, 50, 50, 100, 100, 100)
-  dose_grid <- c(seq(25, 300, 25))
-
-  Data(
-    x = x,
-    y = c(0L, 0L, 0L, 0L, 0L, 0L, 0L, 1L, 0L),
-    doseGrid = dose_grid,
-    placebo = FALSE,
-    ID = 1:9,
-    cohort = c(1L, 1L, 1L, 2L, 2L, 2L, 3L, 3L, 3L)
-  )
-}
 
 my_data <- h_get_data_no_plcb()
 my_model <- LogisticKadane(0.3, xmin = 0.001, xmax = 100)

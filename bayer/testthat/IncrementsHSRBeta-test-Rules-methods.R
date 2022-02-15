@@ -1,3 +1,4 @@
+source('bayer/testthat/helper-data.R')
 # maxDose-IncrementsHSRBeta ----
 
 my_data <- h_get_data()
@@ -44,4 +45,28 @@ test_that("IncrementsHSRBeta works correctly if toxcicity probability of placebo
     data = my_data
   )
   expect_equal(result, 300) # maxDose is 300 as placebo is ignored.
+})
+
+my_data <- h_get_data_no_plcb()
+my_data@y[my_data@cohort==1] <- c(0L,1L,1L)
+
+test_that("IncrementsHSRBeta works correctly if toxcicity probability of first active dose is above threshold probability (no placebo)", {
+  increments <- IncrementsHSRBeta(target = 0.3, prob = 0.90)
+  result <- maxDose(
+    increments,
+    data = my_data
+  )
+  expect_equal(result, 25) # maxDose is 25 as toxicity probability of dose 25 is above 0.90.
+})
+
+my_data <- h_get_data_no_plcb()
+my_data@y[my_data@cohort==3] <- c(0L,1L,1L)
+
+test_that("IncrementsHSRBeta works correctly if toxcicity probability is above threshold probability (no placebo)", {
+  increments <- IncrementsHSRBeta(target = 0.3, prob = 0.90)
+  result <- maxDose(
+    increments,
+    data = my_data
+  )
+  expect_equal(result, 75) # maxDose is 75 as toxicity probability of dose 100 is above 0.90.
 })
