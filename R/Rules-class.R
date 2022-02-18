@@ -305,6 +305,7 @@ validObject(NextBestMinDist(0.1))
 ##' \code{\linkS4class{IncrementsRelativeDLT}},
 ##' \code{\linkS4class{IncrementsRelativeParts}},
 ##' [`IncrementsNumDoseLevels`]
+##' [`IncrementsHSRBeta`]
 ##'
 ##' @aliases Increments
 ##' @export
@@ -414,6 +415,75 @@ IncrementsNumDoseLevels <- function(maxLevels=1,
   .IncrementsNumDoseLevels(
     maxLevels=safeInteger(maxLevels),
     basisLevel=basisLevel
+  )
+}
+
+
+# IncrementsHSRBeta-class ----
+
+#' `IncrementsHSRBeta`
+#'
+#' @description `r lifecycle::badge("experimental")`
+#'
+#' [`IncrementsHSRBeta`] is a class for limiting further increments using
+#' a Hard Safety Rule based on the Bin-Beta model.
+#' Increment control is based on the number of observed DLTs and number of
+#' subjects at each dose level. The probability of toxicity is calculated
+#' using a Bin-Beta model with prior (a,b). If the probability exceeds
+#' the threshold for a given dose, that dose and all doses above are excluded
+#' from further escalation.
+#' This is a hard safety rule that limits further escalation based on the
+#' observed data per dose level, independent from the underlying model.
+#'
+#' @slot target (`proportion`)\cr the target toxicity.
+#' @slot prob (`proportion`)\cr the threshold probability for a dose being toxic.
+#' @slot a (`number`)\cr shape parameter a>0 of probability
+#'  distribution Beta (a,b).
+#' @slot b (`number`)\cr shape parameter b>0 of probability
+#'  distribution Beta (a,b).
+#'
+#' @aliases IncrementsHSRBeta
+#' @export
+#'
+.IncrementsHSRBeta <- setClass(
+  Class = "IncrementsHSRBeta",
+  contains = "Increments",
+  representation(
+    target = "numeric",
+    prob = "numeric",
+    a = "numeric",
+    b = "numeric"
+  ),
+  prototype(
+    target = 0.3,
+    prob = 0.95,
+    a = 1,
+    b = 1
+  ),
+  validity = validate_increments_hsr_beta
+)
+
+# IncrementsHSRBeta-constructor ----
+
+#' @rdname IncrementsHSRBeta-class
+#'
+#' @param target (`proportion`)\cr see slot definition.
+#' @param prob (`proportion`)\cr see slot definition.
+#' @param a (`number`)\cr see slot definition.
+#' @param b (`number`)\cr see slot definition.
+#'
+#' @example examples/Rules-class-IncrementsHSRBeta.R
+#' @export
+#'
+IncrementsHSRBeta <- function(target = 0.3,
+                              prob = 0.95,
+                              a = 1,
+                              b = 1) {
+  .IncrementsHSRBeta(
+    target = target,
+    prob = prob,
+    a = a,
+    b = b
   )
 }
 
@@ -616,7 +686,7 @@ IncrementMin <- function(IncrementsList)
 #' @seealso [`StoppingList`], [`StoppingCohortsNearDose`], [`StoppingPatientsNearDose`],
 #'   [`StoppingMinCohorts`], [`StoppingMinPatients`], [`StoppingTargetProb`],
 #'   [`StoppingMTDdistribution`], [`StoppingTargetBiomarker`], [`StoppingHighestDose`]
-#'   [`StoppingMTDCV`].
+#'   [`StoppingMTDCV`], [`StoppingLowestDoseHSRBeta`].
 #'
 #' @aliases Stopping
 #' @export
@@ -926,7 +996,7 @@ StoppingMTDdistribution <- function(target,
 #' [`StoppingMTDCV`] is a class for stopping rule based on precision of MTD
 #' which is calculated as the coefficient of variation (CV) of the MTD.
 #'
-#' @slot target (`number`)\cr toxicity target of MTD.
+#' @slot target (`proportion`)\cr toxicity target of MTD.
 #' @slot thresh_cv (`number`)\cr threshold for CV to be considered accurate enough
 #'   to stop the trial.
 #'
@@ -951,10 +1021,8 @@ StoppingMTDdistribution <- function(target,
 
 #' @rdname StoppingMTDCV-class
 #'
-#' @param target (`number`)\cr the target toxicity probability (e.g. 0.3)
-#'   defining the MTD.
-#' @param thresh_cv (`number`)\cr threshold for CV to be considered accurate enough
-#'  to stop the trial (e.g. 40 percent).
+#' @param target (`proportion`)\cr see slot definition.
+#' @param thresh_cv (`number`)\cr see slot definition.
 #'
 #' @export
 #' @example examples/Rules-class-StoppingMTDCV.R
@@ -964,6 +1032,78 @@ StoppingMTDCV <- function(target = 0.3,
   .StoppingMTDCV(
     target = target,
     thresh_cv = thresh_cv
+  )
+}
+
+
+# StoppingLowestDoseHSRBeta-class ----
+
+#' `StoppingLowestDoseHSRBeta`
+#'
+#' @description `r lifecycle::badge("experimental")`
+#'
+#' [`StoppingLowestDoseHSRBeta`] is a class for stopping based on a Hard Safety
+#' Rule using the Beta posterior distribution with Beta(a,b) prior and a
+#' Bin-Beta model based on the observed data at the lowest dose level.
+#' The rule is triggered when the first dose is considered to be toxic
+#' (i.e. above threshold probability) based on the observed data at the
+#' lowest dose level and a Beta(a,b) prior distribution.
+#' The default prior is Beta(1,1).
+#' In case that placebo is used, the rule is evaluated at the second dose of the
+#' dose grid, i.e. at the lowest non-placebo dose.
+#' Note: this stopping rule is independent from the underlying model.
+#'
+#' @slot target (`proportion`)\cr the target toxicity.
+#' @slot prob (`proportion`)\cr the threshold probability for the lowest
+#'  dose being toxic.
+#' @slot a (`number`)\cr shape parameter a>0 of probability
+#'  distribution Beta (a,b).
+#' @slot b (`number`)\cr shape parameter b>0 of probability
+#'  distribution Beta (a,b).
+#'
+#' @aliases StoppingLowestDoseHSRBeta
+#' @export
+#'
+.StoppingLowestDoseHSRBeta <- setClass(
+  Class = "StoppingLowestDoseHSRBeta",
+  contains = "Stopping",
+  representation = representation(
+    target = "numeric",
+    prob = "numeric",
+    a = "numeric",
+    b = "numeric"
+  ),
+  prototype(
+    target = 0.3,
+    prob = 0.95,
+    a = 1,
+    b = 1
+  ),
+  validity = validate_stopping_lowest_dose_hsr_beta
+)
+
+
+# StoppingLowestDoseHSRBeta-constructor ----
+
+#' @rdname StoppingLowestDoseHSRBeta-class
+#'
+#' @param target (`proportion`)\cr see slot definition.
+#' @param prob (`proportion`)\cr see slot definition.
+#' @param a (`number`)\cr see slot definition.
+#' @param b (`number`)\cr see slot definition.
+#'
+#' @export
+#' @example examples/Rules-class-StoppingLowestDoseHSRBeta.R
+#'
+StoppingLowestDoseHSRBeta <- function(target = 0.3,
+                                      prob = 0.95,
+                                      a = 1,
+                                      b = 1) {
+  .StoppingLowestDoseHSRBeta(
+    target = target,
+    prob = prob,
+    a = a,
+    b = b
   )
 }
 

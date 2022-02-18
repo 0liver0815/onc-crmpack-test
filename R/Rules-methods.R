@@ -773,6 +773,63 @@ setMethod(
     }
 )
 
+
+# maxDose-IncrementsHSRBeta ----
+
+#' @rdname maxDose
+#'
+#' @description Determine the maximum possible dose for escalation.
+#'
+#' @aliases maxDose-IncrementsHSRBeta
+#' @example examples/Rules-method-maxDose-IncrementsHSRBeta.R
+#' @export
+setMethod(
+  "maxDose",
+  signature = signature(
+    increments = "IncrementsHSRBeta",
+    data = "Data"
+  ),
+  definition = function(increments, data, ...) {
+    # Summary of observed data per dose level.
+    y <- factor(data@y, levels = c("0", "1"))
+    dlt_tab <- table(y, data@x)
+
+    # Ignore placebo if applied.
+    if (data@placebo == TRUE & min(data@x) == data@doseGrid[1]) {
+      dlt_tab <- dlt_tab[, -1]
+    }
+
+    # Extract dose names as these get lost if only one dose available.
+    non_plcb_doses <- unique(sort(as.numeric(colnames(dlt_tab))))
+
+    # Toxicity probability per dose level.
+    x <- dlt_tab[2, ]
+    n <- apply(dlt_tab, 2, sum)
+    tox_prob <- pbeta(
+      increments@target,
+      x + increments@a,
+      n - x + increments@b,
+      lower.tail = FALSE
+    )
+
+    # Return the min toxic dose level or maximum dose level if no dose is toxic,
+    # while ignoring placebo.
+    dose_tox <- if (sum(tox_prob > increments@prob) > 0) {
+      min(non_plcb_doses[which(tox_prob > increments@prob)])
+    } else {
+      # Add small value to max dose, so that the max dose is always smaller.
+      max(data@doseGrid) + 0.01
+    }
+
+    # Determine the next maximum possible dose.
+    # In case that the first active dose is above probability threshold,
+    # the first active dose is reported as maximum. I.e. in case that placebo is used,
+    # the second dose is reported. Please note that this rule should be used together
+    # with the hard safety stopping rule to avoid inconsistent results.
+    max(data@doseGrid[data@doseGrid < dose_tox], data@doseGrid[data@placebo + 1])
+  }
+)
+
 # nolint start
 
 ## --------------------------------------------------
@@ -1526,6 +1583,65 @@ setMethod(
       round(stopping@thresh_cv),
       "%"
     )
+
+    structure(do_stop, message = msg)
+  }
+)
+
+
+# stopTrial-StoppingLowestDoseHSRBeta ----
+
+#' @rdname stopTrial
+#'
+#' @description Stopping based based on the lowest non placebo dose. The trial is
+#'  stopped when the lowest non placebo dose meets the Hard
+#'  Safety Rule, i.e. it is deemed to be overly toxic. Stopping is based on the
+#'  observed data at the lowest dose level using a Bin-Beta model
+#'  based on DLT probability.
+#'
+#' @aliases stopTrial-StoppingLowestDoseHSRBeta
+#' @example examples/Rules-method-stopTrial-StoppingLowestDoseHSRBeta.R
+#' @export
+setMethod(
+  "stopTrial",
+  signature = signature(
+    stopping = "StoppingLowestDoseHSRBeta",
+    dose = "numeric",
+    samples = "Samples"
+  ),
+  definition = function(stopping, dose, samples, model, data, ...) {
+    # Actual number of patients at first active dose.
+    n <- sum(data@x == data@doseGrid[data@placebo + 1])
+
+    # Determine toxicity probability of the first active dose.
+    tox_prob_first_dose <-
+      if (n > 0) {
+        x <- sum(data@y[which(data@x == data@doseGrid[data@placebo + 1])])
+        pbeta(stopping@target, x + stopping@a, n - x + stopping@b, lower.tail = FALSE)
+      } else {
+        0
+      }
+
+    do_stop <- tox_prob_first_dose > stopping@prob
+
+    # generate message
+    msg <- if (n == 0) {
+      "Lowest active dose not tested, stopping rule not applied."
+    } else {
+      paste(
+        "Probability that the lowest active dose of ",
+        data@doseGrid[data@placebo + 1],
+        " being toxic based on posterior Beta distribution using a Beta(",
+        stopping@a, ",", stopping@b, ") prior is ",
+        round(tox_prob_first_dose * 100),
+        "% and thus ",
+        ifelse(do_stop, "above", "below"),
+        " the required ",
+        round(stopping@prob * 100),
+        "% threshold.",
+        sep = ""
+      )
+    }
 
     structure(do_stop, message = msg)
   }
